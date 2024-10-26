@@ -1,0 +1,135 @@
+import React from 'react';
+import ReactDOM from 'react-dom';
+
+class Editor extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = {
+            isMuted: false,
+            timings: [],
+            playing: false,
+            currently_grabbed: { index: 0, type: 'none' },
+            difference: 0.2,
+            deletingGrabber: false,
+            current_warning: null,
+            imageUrl: ''
+        };
+        this.playVideo = React.createRef();
+        this.progressBar = React.createRef();
+        this.playBackBar = React.createRef();
+    }
+
+    componentDidMount() {
+        this.playVideo.current.addEventListener('timeupdate', this.handleTimeUpdate);
+        window.addEventListener('keyup', this.handleKeyUp);
+        this.playVideo.current.onloadedmetadata = this.initializeTimings;
+    }
+
+    componentWillUnmount() {
+        this.playVideo.current.removeEventListener('timeupdate', this.handleTimeUpdate);
+        window.removeEventListener('keyup', this.handleKeyUp);
+    }
+
+    handleTimeUpdate = () => {
+        const { currently_grabbed, timings } = this.state;
+        const currIdx = currently_grabbed.index;
+        const seek =
+            ((this.playVideo.current.currentTime - timings[currIdx].start) / 
+            this.playVideo.current.duration) * 100;
+        this.progressBar.current.style.width = `${seek}%`;
+
+        if (this.playVideo.current.currentTime >= timings[timings.length - 1].end) {
+            this.playVideo.current.pause();
+            this.setState({ playing: false });
+        } else if (this.playVideo.current.currentTime >= timings[currIdx].end) {
+            if (currIdx + 1 < timings.length) {
+                this.setState(
+                    { currently_grabbed: { index: currIdx + 1, type: 'start' } },
+                    () => {
+                        this.progressBar.current.style.width = '0%';
+                        this.progressBar.current.style.left = `${
+                            (timings[currIdx + 1].start / this.playVideo.current.duration) * 100
+                        }%`;
+                        this.playVideo.current.currentTime = timings[currIdx + 1].start;
+                    }
+                );
+            }
+        }
+    };
+
+    handleKeyUp = (event) => {
+        if (event.key === ' ') {
+            this.play_pause();
+        }
+    };
+
+    initializeTimings = () => {
+        const { timings } = this.state;
+        timings.push({ start: 0, end: this.playVideo.current.duration });
+        this.setState({ timings }, this.addActiveSegments);
+    };
+
+    play_pause = () => {
+        if (this.state.playing) {
+            this.playVideo.current.pause();
+        } else {
+            if (this.playVideo.current.currentTime >= this.state.timings.at(-1).end) {
+                this.reset();
+            }
+            this.playVideo.current.play();
+        }
+        this.setState((prevState) => ({ playing: !prevState.playing }));
+    };
+
+    reset = () => {
+        this.playVideo.current.pause();
+        const { duration } = this.playVideo.current;
+        this.setState(
+            {
+                isMuted: false,
+                timings: [{ start: 0, end: duration }],
+                playing: false,
+                currently_grabbed: { index: 0, type: 'none' },
+                difference: 0.2,
+                deletingGrabber: false,
+                current_warning: null,
+                imageUrl: ''
+            },
+            () => {
+                this.progressBar.current.style.left = '0%';
+                this.progressBar.current.style.width = '0%';
+                this.addActiveSegments();
+            }
+        );
+    };
+
+    render() {
+        return (
+            <div className="wrapper">
+                <video
+                    ref={this.playVideo}
+                    className="video"
+                    muted={this.state.isMuted}
+                    onClick={this.play_pause}
+                >
+                    <source src={this.props.videoUrl} type="video/mp4" />
+                </video>
+                <div className="playback" ref={this.playBackBar}>
+                    <div className="progress" ref={this.progressBar}></div>
+                </div>
+                {/* Add control buttons here */}
+            </div>
+        );
+    }
+}
+
+// Render the component
+const renderApp = (videoUrl) => {
+    ReactDOM.render(
+        <Editor videoUrl={videoUrl} />,
+        document.getElementById('root')
+    );
+};
+
+// Expose renderApp function globally for iFrame use
+window.renderApp = renderApp;
